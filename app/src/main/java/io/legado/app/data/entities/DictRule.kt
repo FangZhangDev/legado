@@ -36,9 +36,19 @@ data class DictRule(
 
     /**
      * 搜索字典
+     *
+     * [extraParams] 会作为额外 JS 变量注入 urlRule。
      */
-    suspend fun search(word: String): String {
-        val analyzeUrl = AnalyzeUrl(urlRule, key = word, coroutineContext = currentCoroutineContext())
+    suspend fun search(
+        word: String,
+        extraParams: Map<String, String>? = null
+    ): String {
+        val analyzeUrl = AnalyzeUrl(
+            urlRule,
+            key = word,
+            coroutineContext = currentCoroutineContext(),
+            extraParams = extraParams
+        )
         val body = analyzeUrl.getStrResponseAwait().body
         if (showRule.isBlank()) {
             return body!!
@@ -51,7 +61,7 @@ data class DictRule(
     suspend fun buttonClick(name: String, click: String) {
         val analyzeRule = AnalyzeRule().setCoroutineContext(currentCoroutineContext())
         analyzeRule.setRuleName(this.name)
-        analyzeRule.evalJS(click , name)
+        analyzeRule.evalJS(click, name)
     }
 
 }

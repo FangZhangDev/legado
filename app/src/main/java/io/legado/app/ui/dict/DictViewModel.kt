@@ -22,11 +22,12 @@ class DictViewModel(application: Application) : BaseViewModel(application) {
     fun dict(
         dictRule: DictRule,
         word: String,
+        extraParams: Map<String, String> = emptyMap(),
         onFinally: (String) -> Unit
     ) {
         dictJob?.cancel()
         dictJob = execute {
-            dictRule.search(word)
+            dictRule.search(word, extraParams)
         }.onSuccess {
             onFinally.invoke(it)
         }.onError {
