@@ -19,6 +19,8 @@ import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.model.ReadBook
+import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setHtml
@@ -89,7 +91,7 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
             override fun onTabSelected(tab: TabLayout.Tab) {
                 val dictRule = tab.tag as DictRule
                 binding.rotateLoading.visible()
-                viewModel.dict(dictRule, word!!) {
+                viewModel.dict(dictRule, word!!, buildReaderContext()) {
                     binding.rotateLoading.inVisible()
                     val contentTrimS = it.trimStart()
                     if (contentTrimS.startsWith("<md>")) {
@@ -161,6 +163,60 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
         }
     }
 
+    /**
+     * 将阅读器当前进度以安全的普通字符串变量传给字典 urlRule。
+     * 规则可直接读取：
+     * currentBookName/currentBookAuthor/currentChapterTitle/currentChapterIndex/
+     * currentChapterNumber/currentChapterPos/currentReadContext
+     */
+    private fun buildReaderContext(): Map<String, String> {
+        val book = ReadBook.book
+        val chapter = ReadBook.curTextChapter
+        val chapterIndex = ReadBook.durChapterIndex
+        val chapterPos = ReadBook.durChapterPos
+
+        return mapOf(
+            "currentBookName" to book?.name.orEmpty(),
+            "currentBookAuthor" to book?.author.orEmpty(),
+            "currentChapterTitle" to (chapter?.title ?: book?.durChapterTitle.orEmpty()),
+            "currentChapterIndex" to chapterIndex.toString(),
+            "currentChapterNumber" to (chapterIndex + 1).toString(),
+            "currentChapterPos" to chapterPos.toString(),
+            "currentReadContext" to buildReadContext(chapter, chapterPos)
+        )
+    }
+
+    /**
+     * 只截取当前阅读位置之前的正文，避免把后续内容意外交给 AI。
+     * 最多保留最近 [READ_CONTEXT_MAX_CHARS] 个字符。
+     */
+    private fun buildReadContext(
+        chapter: TextChapter?,
+        chapterPos: Int
+    ): String {
+        if (chapter == null || chapter.pages.isEmpty()) return ""
+
+        return runCatching {
+            val page = chapter.getPageByReadPos(chapterPos)
+            if (page != null) {
+                val pageStart = page.chapterPosition
+                val currentPrefixLength =
+                    (chapterPos - pageStart).coerceIn(0, page.text.length)
+                val previousPages = chapter.pages
+                    .asSequence()
+                    .filter { it.index < page.index }
+                    .joinToString(separator = "") { it.text }
+                (previousPages + page.text.take(currentPrefixLength))
+                    .takeLast(READ_CONTEXT_MAX_CHARS)
+            } else {
+                val content = chapter.getContent()
+                content
+                    .take(chapterPos.coerceIn(0, content.length))
+                    .takeLast(READ_CONTEXT_MAX_CHARS)
+            }
+        }.getOrDefault("")
+    }
+
     //根据已启用词典数动态选取布局
     private fun setupTabLayoutMode(dictCount: Int) {
         if (dictCount <= 4) {
@@ -177,5 +233,9 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
         if (initGetter) {
             glideImageGetter.clear()
         }
+    }
+
+    companion object {
+        private const val READ_CONTEXT_MAX_CHARS = 5000
     }
 }
